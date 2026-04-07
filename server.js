@@ -231,12 +231,18 @@ var CHECKERS = {
 
   // ── FACEBOOK — proxy returns 400 always, direct works partially ────────────
   facebook: async function(u) {
-    var r = await fetchDirect('https://www.facebook.com/' + u);
-    if (r.status === 404) return 'av';
-    if (r.status === 200) {
-      if (has(r.body, ['Page Not Found', 'content not found', "This page isn't available"])) return 'av';
-      if (has(r.body, ['og:title', 'fb:app_id', 'ProfileCoverPhoto', 'timeline'])) return 'tk';
-      return 'un';
+    // Try via proxy first
+    var r = await fetchProxy('https://www.facebook.com/' + u);
+    if (r.status === 200 && r.body.length > 10000) {
+      if (has(r.body, ['Page Not Found', 'content not found', "This page isn't available", 'not available'])) return 'av';
+      if (has(r.body, ['og:title', 'fb:app_id', 'ProfileCoverPhoto', 'timeline', 'userVanity'])) return 'tk';
+    }
+    // Fallback direct
+    var r2 = await fetchDirect('https://www.facebook.com/' + u);
+    if (r2.status === 404) return 'av';
+    if (r2.status === 200) {
+      if (has(r2.body, ['Page Not Found', 'content not found', "This page isn't available"])) return 'av';
+      if (has(r2.body, ['og:title', 'fb:app_id', 'ProfileCoverPhoto', 'timeline'])) return 'tk';
     }
     return 'un';
   },
@@ -244,17 +250,17 @@ var CHECKERS = {
   // ── TWITTER — both return hasNotFound:true (it's in the JS bundle)
   // Use proxy with different endpoint: Twitter card API
   twitter: async function(u) {
-    // Try Twitter's syndication API which returns clean JSON
-    var r = await fetchProxy('https://syndication.twitter.com/srv/timeline-profile/screen-name/' + u + '?suppress_response_codes=true');
+    // Twitter nitter-style: check their public API endpoint
+    // x.com always returns 200 with JS shell - check meta tags in head
+    var r = await fetchProxy('https://x.com/' + u);
+    if (r.status === 404) return 'av';
     if (r.status === 200) {
-      if (has(r.body, ['"user_id"', '"screen_name"', '"name"'])) return 'tk';
-    }
-    // Fallback: profile page via proxy, check for specific not-found indicators
-    var r2 = await fetchProxy('https://x.com/' + u);
-    if (r2.status === 404) return 'av';
-    if (r2.status === 200) {
-      // X embeds meta tags with user data for existing accounts
-      if (has(r2.body, ['"@' + u + '"', 'twitter:site:id', '"description":"' + u])) return 'tk';
+      // For existing accounts, X embeds og:description and user data
+      if (has(r.body, ['og:description', '"description"', 'og:image'])) {
+        // Check if it's a not-found page
+        if (has(r.body, ['This account doesn', 'Hmm...this page', 'account_suspended'])) return 'av';
+        return 'tk';
+      }
       return 'un';
     }
     return 'un';
@@ -276,21 +282,39 @@ var CHECKERS = {
 
   // ── LINKEDIN — proxy drops, direct returns 999, cannot check reliably ──────
   linkedin: async function(u) {
-    var r = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
+    // Try proxy (bypasses 999 bot detection)
+    var r = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
     if (r.status === 404) return 'av';
     if (r.status === 200) {
-      if (has(r.body, ['Page not found', 'profile is not available'])) return 'av';
+      if (has(r.body, ['Page not found', 'profile is not available', 'no longer available', 'This profile is not available'])) return 'av';
+      if (has(r.body, ['og:title', 'profile-photo', 'linkedin.com/in/' + u])) return 'tk';
+      if (r.body.length > 50000) return 'tk';
+    }
+    // Fallback: direct
+    var r2 = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
+    if (r2.status === 404) return 'av';
+    if (r2.status === 200) {
+      if (has(r2.body, ['Page not found', 'profile is not available'])) return 'av';
       return 'tk';
     }
-    return 'un'; // 999 = bot detected
+    return 'un';
   },
 
   // ── QUORA — Cloudflare blocks proxy (403), direct also blocked ─────────────
   quora: async function(u) {
-    var r = await fetchDirect('https://www.quora.com/profile/' + u);
+    // Try via proxy to bypass Cloudflare
+    var r = await fetchProxy('https://www.quora.com/profile/' + u);
     if (r.status === 404) return 'av';
     if (r.status === 200) {
-      if (has(r.body, ['Page Not Found', "doesn't exist"])) return 'av';
+      if (has(r.body, ['Page Not Found', "doesn't exist", 'not found'])) return 'av';
+      if (r.body.length > 50000) return 'tk';
+      return 'un';
+    }
+    // Fallback direct
+    var r2 = await fetchDirect('https://www.quora.com/profile/' + u);
+    if (r2.status === 404) return 'av';
+    if (r2.status === 200) {
+      if (has(r2.body, ['Page Not Found', "doesn't exist"])) return 'av';
       return 'tk';
     }
     return 'un';
