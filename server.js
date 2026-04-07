@@ -463,4 +463,41 @@ app.get('/health', function(req, res) {
 
 app.listen(PORT, function() {
   console.log('Checker API on port', PORT);
+});app.get('/test', async function(req, res) {
+  var u = req.query.u || 'nike';
+  var logs = [];
+
+  var fb = await fetchProxy('https://www.facebook.com/' + u);
+  logs.push({ p:'facebook_proxy', status:fb.status, len:fb.body.length, snippet:fb.body.substring(0,200) });
+
+  var fb2 = await fetchDirect('https://www.facebook.com/' + u);
+  logs.push({ p:'facebook_direct', status:fb2.status, len:fb2.body.length, snippet:fb2.body.substring(0,200) });
+
+  var tw = await fetchProxy('https://x.com/' + u);
+  logs.push({ p:'twitter_proxy', status:tw.status, len:tw.body.length,
+    hasOgDesc: tw.body.indexOf('og:description') !== -1,
+    hasOgImage: tw.body.indexOf('og:image') !== -1,
+    snippet: tw.body.substring(0,300) });
+
+  var li = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
+  logs.push({ p:'linkedin_proxy', status:li.status, len:li.body.length, snippet:li.body.substring(0,200) });
+
+  var li2 = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
+  logs.push({ p:'linkedin_direct', status:li2.status, len:li2.body.length, snippet:li2.body.substring(0,200) });
+
+  var pa = await fetchProxy('https://www.patreon.com/' + u);
+  logs.push({ p:'patreon_proxy', status:pa.status, len:pa.body.length, snippet:pa.body.substring(0,200) });
+
+  var pa2 = await fetchDirect('https://www.patreon.com/' + u);
+  logs.push({ p:'patreon_direct', status:pa2.status, len:pa2.body.length, snippet:pa2.body.substring(0,200) });
+
+  var qr = await fetchProxy('https://www.quora.com/profile/' + u);
+  logs.push({ p:'quora_proxy', status:qr.status, len:qr.body.length, snippet:qr.body.substring(0,200) });
+
+  var qr2 = await fetchDirect('https://www.quora.com/profile/' + u);
+  logs.push({ p:'quora_direct', status:qr2.status, len:qr2.body.length, snippet:qr2.body.substring(0,200) });
+
+  res.json({ username: u, results: logs });
 });
+
+
