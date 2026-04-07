@@ -191,181 +191,27 @@ app.get('/test', async function(req, res) {
   var u = req.query.u || 'xkqz9mw2randomtest999';
   var logs = [];
 
-  // Test Instagram via proxy - show full body snippet
+  // Show full body for Instagram missing user to find the right detection string
   var r = await fetchProxy('https://www.instagram.com/' + u + '/');
   logs.push({
-    platform: 'instagram_proxy',
+    platform: 'instagram',
     status: r.status,
     bodyLen: r.body.length,
-    first500: r.body.substring(0, 500),
-    last200: r.body.substring(Math.max(0, r.body.length - 200))
+    // Search for key strings
+    hasProfilePage: r.body.indexOf('"ProfilePage"') !== -1,
+    hasErrorPage: r.body.indexOf('"ErrorPage"') !== -1,
+    hasNotAvailable: r.body.indexOf("isn't available") !== -1,
+    hasNotFound: r.body.indexOf('Page Not Found') !== -1,
+    hasUsername: r.body.indexOf('"' + u + '"') !== -1,
+    // Show chunks from different parts of body to find distinguishing text
+    chunk1: r.body.substring(0, 200),
+    chunk2: r.body.substring(1000, 1300),
+    chunk3: r.body.substring(r.body.length - 500)
   });
-
-  // Test Instagram signup check via proxy
-  var r2 = await fetchProxy('https://www.instagram.com/api/v1/users/check_username/?username=' + u, {
-    headers: { 'X-CSRFToken': 'missing', 'X-IG-App-ID': '936619743392459', 'Accept': 'application/json' }
-  });
-  logs.push({ platform: 'instagram_check_api', status: r2.status, body: r2.body.substring(0, 300) });
-
-  // Test Facebook via proxy
-  var r3 = await fetchProxy('https://www.facebook.com/' + u);
-  logs.push({ platform: 'facebook_proxy', status: r3.status, bodyLen: r3.body.length, snippet: r3.body.substring(0, 300) });
-
-  // Test LinkedIn via proxy
-  var r4 = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
-  logs.push({ platform: 'linkedin_proxy', status: r4.status, bodyLen: r4.body.length, snippet: r4.body.substring(0, 300) });
 
   res.json({ username: u, results: logs });
 });
 
-// ── CHECKERS ──────────────────────────────────────────────────────────────────
-var CHECKERS = {
-  instagram: async function(u) {
-    // Key insight from real testing:
-    // - Existing user: status 200, body ~500KB (full profile page)
-    // - Missing user: status null (proxy drops connection) or status 200 with tiny body
-    // - check_username API always returns 429 (rate limited) - don't use it
-    var r = await fetchProxy('https://www.instagram.com/' + u + '/');
-    console.log('IG proxy result:', r.status, 'bodyLen:', r.body.length);
-    if (r.status === 200 && r.body.length > 50000) return 'tk';
-    if (r.status === 200 && r.body.length < 10000) return 'av';
-    if (r.status === 404) return 'av';
-    if (!r.status || r.body.length === 0) return 'av'; // proxy drops = not found
-    return 'un';
-  },
-
-  facebook: async function(u) {
-    // Facebook proxy returns 400 always - use direct fetch with body analysis
-    var r = await fetchDirect('https://www.facebook.com/' + u);
-    if (r.status === 404) return 'av';
-    if (r.status === 200) {
-      if (has(r.body, ['Page Not Found', 'content not found', "This page isn't available"])) return 'av';
-      if (has(r.body, ['og:title', 'fb:app_id', 'timeline', 'ProfileCoverPhoto'])) return 'tk';
-      return 'un';
-    }
-    // Try graph API (public pages only, no auth)
-    var r2 = await fetchDirect('https://www.facebook.com/pg/' + u + '/about/');
-    if (r2.status === 200 && r2.body.length > 50000) return 'tk';
-    return 'un';
-  },
-
-  tiktok: async function(u) {
-    var r = await fetchProxy('https://www.tiktok.com/oembed?url=https://www.tiktok.com/@' + u, {
-      headers: { 'Accept': 'application/json' }
-    });
-    if (r.status === 200) { try { var d = JSON.parse(r.body); if (d.author_name) return 'tk'; } catch(e) {} }
-    if (r.status === 400 || r.status === 404) return 'av';
-    var r2 = await fetchProxy('https://www.tiktok.com/@' + u);
-    if (r2.status === 404) return 'av';
-    if (r2.status === 200) { if (has(r2.body, ["Couldn't find this account", 'user-not-found'])) return 'av'; return 'tk'; }
-    return 'un';
-  },
-
-  linkedin: async function(u) {
-    // Proxy drops connection for LinkedIn - use direct fetch
-    var r = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
-    if (r.status === 404) return 'av';
-    if (r.status === 200) {
-      if (has(r.body, ['Page not found', 'profile is not available', 'no longer available'])) return 'av';
-      return 'tk';
-    }
-    // LinkedIn returns 999 for bots - can't determine
-    return 'un';
-  },
-
-  threads: async function(u) {
-    var r = await fetchProxy('https://www.threads.net/@' + u);
-    if (r.status === 404) return 'av';
-    if (r.status === 200) {
-      if (has(r.body, ['"username":"' + u + '"', '"profile_pic_url"', '"follower_count"'])) return 'tk';
-      if (has(r.body, ['not found', 'Sorry, this page', '"errorTitle"', 'Page Not Found'])) return 'av';
-      return 'un';
-    }
-    return 'un';
-  },
-
-  twitter: async function(u) {
-    var r = await fetchProxy('https://x.com/' + u);
-    if (r.status === 404) return 'av';
-    if (r.status === 200) {
-      if (has(r.body, ["This account doesn't exist", "Hmm...this page doesn't exist", '"not_found"'])) return 'av';
-      return 'tk';
-    }
-    return 'un';
-  },
-
-  snapchat: async function(u) {
-    var r = await fetchProxy('https://www.snapchat.com/add/' + u);
-    if (r.status === 404) return 'av';
-    if (r.status === 200) { if (has(r.body, ["doesn't exist", 'not found'])) return 'av'; return 'tk'; }
-    return 'un';
-  },
-
-  youtube: async function(u) {
-    var r = await fetchProxy('https://www.youtube.com/@' + u);
-    if (r.status === 404) return 'av';
-    if (r.status === 200) { if (has(r.body, ['404', "This page isn't available"])) return 'av'; return 'tk'; }
-    return 'un';
-  },
-
-  pinterest: async function(u) {
-    var r = await fetchProxy('https://www.pinterest.com/' + u + '/');
-    return byStatus(r.status, [200], [404]);
-  },
-
-  telegram: async function(u) {
-    var r = await fetchProxy('https://t.me/' + u);
-    if (r.status === 404) return 'av';
-    if (r.status === 200) {
-      if (has(r.body, ['tgme_page_title', 'View in Telegram', 'tg://resolve'])) return 'tk';
-      if (has(r.body, ['If you have Telegram', 'tgme_page_description'])) return 'av';
-      return 'un';
-    }
-    return 'un';
-  },
-
-  tumblr: async function(u) {
-    var r = await fetchProxy('https://' + u + '.tumblr.com');
-    if (r.status === 404) return 'av';
-    if (r.status === 200) { if (has(r.body, ["There's nothing here", 'not found'])) return 'av'; return 'tk'; }
-    return 'un';
-  },
-
-  producthunt: async function(u) {
-    var r = await fetchProxy('https://www.producthunt.com/@' + u);
-    return byStatus(r.status, [200], [404]);
-  },
-
-  quora: async function(u) {
-    var r = await fetchProxy('https://www.quora.com/profile/' + u);
-    if (r.status === 404) return 'av';
-    if (r.status === 200) { if (has(r.body, ['Page Not Found', "doesn't exist"])) return 'av'; return 'tk'; }
-    return 'un';
-  },
-
-  github: async function(u) { var r = await fetchDirect('https://api.github.com/users/' + u, { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'socialname-checker' } }); return byStatus(r.status, [200], [404]); },
-  reddit: async function(u) { var r = await fetchDirect('https://www.reddit.com/user/' + u + '/about.json', { headers: { 'Accept': 'application/json' } }); if (r.status === 200) { if (has(r.body, ['"error": 404', '"error":404'])) return 'av'; return 'tk'; } return byStatus(r.status, [200], [404]); },
-  mastodon: async function(u) { var r = await fetchDirect('https://mastodon.social/api/v1/accounts/lookup?acct=' + u, { headers: { 'Accept': 'application/json' } }); return byStatus(r.status, [200], [404, 422]); },
-  bluesky: async function(u) { var r = await fetchDirect('https://bsky.social/xrpc/com.atproto.identity.resolveHandle?handle=' + u + '.bsky.social'); return byStatus(r.status, [200], [400, 404]); },
-  hackernews: async function(u) { var r = await fetchDirect('https://hacker-news.firebaseio.com/v0/user/' + u + '.json'); if (!r.status) return 'un'; if (r.status === 200) { var b = (r.body || '').trim(); return (b === 'null' || b === '') ? 'av' : 'tk'; } return 'un'; },
-  devto: async function(u) { var r = await fetchDirect('https://dev.to/api/users/by_username?url=' + u); return byStatus(r.status, [200], [404]); },
-  gitlab: async function(u) { var r = await fetchDirect('https://gitlab.com/api/v4/users?username=' + u); if (r.status === 200) { try { var a = JSON.parse(r.body); return (Array.isArray(a) && a.length > 0) ? 'tk' : 'av'; } catch(e) {} } return 'un'; },
-  stackoverflow: async function(u) { var r = await fetchDirect('https://api.stackexchange.com/2.3/users?inname=' + encodeURIComponent(u) + '&site=stackoverflow'); if (r.status === 200) { try { var d = JSON.parse(r.body || '{}'); var ex = (d.items || []).filter(function(i) { return (i.display_name || '').toLowerCase() === u.toLowerCase(); }); return ex.length > 0 ? 'tk' : 'av'; } catch(e) {} } return 'un'; },
-  discord: async function(u) { var r = await fetchDirect('https://discord.com/api/v9/invites/' + u); if (r.status === 200) return 'tk'; if (r.status === 404) return 'av'; return 'un'; },
-  twitch: async function(u) { var r = await fetchDirect('https://www.twitch.tv/' + u); if (r.status === 404) return 'av'; if (r.status === 200) { if (has(r.body, ["Sorry. Unless you've got a time machine"])) return 'av'; return 'tk'; } return 'un'; },
-  spotify: async function(u) { var r = await fetchDirect('https://open.spotify.com/user/' + u); if (r.status === 404) return 'av'; if (r.status === 200) { if (has(r.body, ['Page not found'])) return 'av'; return 'tk'; } return 'un'; },
-  soundcloud: async function(u) { var r = await fetchDirect('https://soundcloud.com/oembed?format=json&url=https://soundcloud.com/' + u); if (r.status === 200) return 'tk'; if (r.status === 404) return 'av'; return 'un'; },
-  medium: async function(u) { var r = await fetchDirect('https://medium.com/oembed?url=https://medium.com/@' + u + '&format=json'); if (r.status === 200) return 'tk'; if (r.status === 404) return 'av'; return 'un'; },
-  vimeo: async function(u) { var r = await fetchDirect('https://vimeo.com/api/oembed.json?url=https://vimeo.com/' + u); if (r.status === 200) return 'tk'; if (r.status === 404) return 'av'; return 'un'; },
-  substack: async function(u) { var r = await fetchDirect('https://' + u + '.substack.com'); if (r.status === 404) return 'av'; if (r.status === 200) { if (has(r.body, ['not found', 'does not exist'])) return 'av'; return 'tk'; } return 'un'; },
-  patreon: async function(u) { var r = await fetchDirect('https://www.patreon.com/' + u); if (r.status === 404) return 'av'; if (r.status === 200) { if (has(r.body, ['page not found'])) return 'av'; return 'tk'; } return 'un'; },
-  goodreads: async function(u) { var r = await fetchDirect('https://www.goodreads.com/' + u); return byStatus(r.status, [200], [404]); },
-  vk: async function(u) { var r = await fetchDirect('https://vk.com/' + u); if (r.status === 404) return 'av'; if (r.status === 200) { if (has(r.body, ['page not found', 'is not available'])) return 'av'; return 'tk'; } return 'un'; },
-  behance: async function(u) { var r = await fetchDirect('https://www.behance.net/' + u); return byStatus(r.status, [200], [404]); },
-  dribbble: async function(u) { var r = await fetchDirect('https://dribbble.com/' + u); if (r.status === 404) return 'av'; if (r.status === 200) { if (has(r.body, ['not found'])) return 'av'; return 'tk'; } return 'un'; },
-  codepen: async function(u) { var r = await fetchDirect('https://codepen.io/' + u); if (r.status === 404) return 'av'; if (r.status === 200) { if (has(r.body, ['not found'])) return 'av'; return 'tk'; } return 'un'; },
-  whatsapp: async function(u) { return 'na'; },
-};
 
 app.get('/check', async function(req, res) {
   var u = (req.query.username || '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
