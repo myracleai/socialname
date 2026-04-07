@@ -191,22 +191,54 @@ app.get('/test', async function(req, res) {
   var u = req.query.u || 'xkqz9mw2randomtest999';
   var logs = [];
 
-  // Show full body for Instagram missing user to find the right detection string
-  var r = await fetchProxy('https://www.instagram.com/' + u + '/');
-  logs.push({
-    platform: 'instagram',
-    status: r.status,
-    bodyLen: r.body.length,
-    // Search for key strings
-    hasProfilePage: r.body.indexOf('"ProfilePage"') !== -1,
-    hasErrorPage: r.body.indexOf('"ErrorPage"') !== -1,
-    hasNotAvailable: r.body.indexOf("isn't available") !== -1,
-    hasNotFound: r.body.indexOf('Page Not Found') !== -1,
-    hasUsername: r.body.indexOf('"' + u + '"') !== -1,
-    // Show chunks from different parts of body to find distinguishing text
-    chunk1: r.body.substring(0, 200),
-    chunk2: r.body.substring(1000, 1300),
-    chunk3: r.body.substring(r.body.length - 500)
+  // Test TikTok
+  var tt = await fetchProxy('https://www.tiktok.com/oembed?url=https://www.tiktok.com/@' + u, { headers: { 'Accept': 'application/json' } });
+  logs.push({ p: 'tiktok_oembed', status: tt.status, body: tt.body.substring(0, 200) });
+
+  // Test Threads
+  var th = await fetchProxy('https://www.threads.net/@' + u);
+  logs.push({ p: 'threads', status: th.status, len: th.body.length,
+    hasUser: th.body.indexOf('"username":"' + u + '"') !== -1,
+    hasError: th.body.indexOf('not found') !== -1 || th.body.indexOf('errorTitle') !== -1,
+    snippet: th.body.substring(50000, 50300)
+  });
+
+  // Test Twitter/X
+  var tw = await fetchProxy('https://x.com/' + u);
+  logs.push({ p: 'twitter', status: tw.status, len: tw.body.length,
+    hasNotExist: tw.body.indexOf("doesn't exist") !== -1,
+    hasNotFound: tw.body.indexOf('not_found') !== -1,
+    snippet: tw.body.substring(0, 300)
+  });
+
+  // Test Telegram
+  var tg = await fetchProxy('https://t.me/' + u);
+  logs.push({ p: 'telegram', status: tg.status, len: tg.body.length,
+    hasPageTitle: tg.body.indexOf('tgme_page_title') !== -1,
+    hasIfYouHave: tg.body.indexOf('If you have Telegram') !== -1,
+    snippet: tg.body.substring(0, 400)
+  });
+
+  // Test LinkedIn
+  var li = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
+  logs.push({ p: 'linkedin', status: li.status, len: li.body.length, snippet: li.body.substring(0, 200) });
+
+  // Test Quora
+  var qr = await fetchProxy('https://www.quora.com/profile/' + u);
+  logs.push({ p: 'quora', status: qr.status, len: qr.body.length,
+    hasNotFound: qr.body.indexOf('Page Not Found') !== -1 || qr.body.indexOf("doesn't exist") !== -1,
+    snippet: qr.body.substring(0, 300)
+  });
+
+  // Test ProductHunt
+  var ph = await fetchProxy('https://www.producthunt.com/@' + u);
+  logs.push({ p: 'producthunt', status: ph.status, len: ph.body.length, snippet: ph.body.substring(0, 200) });
+
+  // Test Tumblr
+  var tu = await fetchProxy('https://' + u + '.tumblr.com');
+  logs.push({ p: 'tumblr', status: tu.status, len: tu.body.length,
+    hasNothing: tu.body.indexOf("There's nothing here") !== -1,
+    snippet: tu.body.substring(0, 200)
   });
 
   res.json({ username: u, results: logs });
