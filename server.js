@@ -17,79 +17,7 @@ app.use(function(req, res, next) {
   next();
 });
 
-// ── TEST ENDPOINT ─────────────────────────────────────────────────────────────
-app.get('/test', async function(req, res) {
-  const logs = [];
-
-  // Test 1: Can we reach IPRoyal at all?
-  logs.push('Testing TCP to ' + PROXY_HOST + ':' + PROXY_PORT);
-  const tcpResult = await new Promise(function(resolve) {
-    const timer = setTimeout(function() { resolve('timeout'); }, 8000);
-    const sock = net.createConnection(PROXY_PORT, PROXY_HOST);
-    sock.setTimeout(7000);
-    sock.on('connect', function() {
-      clearTimeout(timer);
-      sock.destroy();
-      resolve('connected');
-    });
-    sock.on('error', function(e) { clearTimeout(timer); resolve('error: ' + e.code + ' ' + e.message); });
-    sock.on('timeout', function() { clearTimeout(timer); sock.destroy(); resolve('timeout'); });
-  });
-  logs.push('TCP result: ' + tcpResult);
-
-  // Test 2: CONNECT tunnel
-  if (tcpResult === 'connected') {
-    logs.push('Testing CONNECT tunnel...');
-    const auth = 'Basic ' + Buffer.from(PROXY_USER + ':' + PROXY_PASS).toString('base64');
-    const connectResult = await new Promise(function(resolve) {
-      const timer = setTimeout(function() { resolve('timeout'); }, 10000);
-      const sock = net.createConnection(PROXY_PORT, PROXY_HOST);
-      sock.on('connect', function() {
-        sock.write('CONNECT www.instagram.com:443 HTTP/1.1\r\nHost: www.instagram.com:443\r\nProxy-Authorization: ' + auth + '\r\n\r\n');
-        let buf = Buffer.alloc(0);
-        sock.on('data', function(chunk) {
-          buf = Buffer.concat([buf, chunk]);
-          const str = buf.toString('utf8');
-          if (str.indexOf('\r\n\r\n') !== -1) {
-            const firstLine = str.split('\r\n')[0];
-            clearTimeout(timer);
-            sock.destroy();
-            resolve('response: ' + firstLine);
-          }
-        });
-      });
-      sock.on('error', function(e) { clearTimeout(timer); resolve('error: ' + e.message); });
-      sock.on('timeout', function() { clearTimeout(timer); sock.destroy(); resolve('timeout'); });
-    });
-    logs.push('CONNECT result: ' + connectResult);
-  }
-
-  // Test 3: Direct Instagram check (no proxy)
-  logs.push('Testing direct Instagram...');
-  const igResult = await new Promise(function(resolve) {
-    const timer = setTimeout(function() { resolve('timeout'); }, 8000);
-    https.request({
-      hostname: 'www.instagram.com',
-      path: '/xkqz9mw2randomtest999/',
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' },
-      timeout: 7000
-    }, function(res) {
-      let body = '';
-      res.setEncoding('utf8');
-      res.on('data', function(c) { if (body.length < 5000) body += c; });
-      res.on('end', function() {
-        clearTimeout(timer);
-        const notFound = body.indexOf("Sorry, this page isn't available") !== -1 || body.indexOf('Page Not Found') !== -1;
-        resolve('status:' + res.statusCode + ' notFound:' + notFound + ' bodyLen:' + body.length);
-      });
-    }).on('error', function(e) { clearTimeout(timer); resolve('error: ' + e.message); }).end();
-  });
-  logs.push('Direct Instagram result: ' + igResult);
-
-  res.json({ logs: logs, proxy: { host: PROXY_HOST, port: PROXY_PORT, user: PROXY_USER ? 'set' : 'NOT SET' } });
-});
-
-// ── DIRECT FETCH ─────────────────────────────────────────────────────────────
+// ── DIRECT FETCH ──────────────────────────────────────────────────────────────
 function fetchDirect(url, opts) {
   opts = opts || {};
   return new Promise(function(resolve) {
@@ -129,7 +57,7 @@ function fetchDirect(url, opts) {
   });
 }
 
-// ── PROXY FETCH ──────────────────────────────────────────────────────────────
+// ── PROXY FETCH ───────────────────────────────────────────────────────────────
 function fetchProxy(targetUrl, opts) {
   opts = opts || {};
   return new Promise(function(resolve) {
@@ -162,15 +90,15 @@ function fetchProxy(targetUrl, opts) {
     socket.on('timeout', function() { socket.destroy(); finish({ status: null, body: '' }); });
     socket.on('error', function(e) {
       console.log('PROXY SOCK ERR:', e.message);
-      // Fall back to direct fetch
-      fetchDirect(targetUrl, opts).then(finish).catch(function() { finish({ status: null, body: '' }); });
+      finish({ status: null, body: '' });
     });
 
     socket.on('connect', function() {
+      var auth_header = 'Basic ' + Buffer.from(PROXY_USER + ':' + PROXY_PASS).toString('base64');
       socket.write(
         'CONNECT ' + targetHost + ':' + targetPort + ' HTTP/1.1\r\n' +
         'Host: ' + targetHost + ':' + targetPort + '\r\n' +
-        'Proxy-Authorization: ' + auth + '\r\n' +
+        'Proxy-Authorization: ' + auth_header + '\r\n' +
         '\r\n'
       );
 
@@ -189,9 +117,7 @@ function fetchProxy(targetUrl, opts) {
 
         if (code !== 200) {
           socket.destroy();
-          // Fall back to direct
-          console.log('Proxy rejected, falling back to direct for', targetHost);
-          fetchDirect(targetUrl, opts).then(finish).catch(function() { finish({ status: null, body: '' }); });
+          finish({ status: null, body: '' });
           return;
         }
 
@@ -206,7 +132,6 @@ function fetchProxy(targetUrl, opts) {
           finish({ status: null, body: '' });
         });
         tlsSock.on('secureConnect', function() {
-          console.log('TLS OK:', targetHost);
           var lines = ['GET ' + urlPath + ' HTTP/1.1'];
           Object.keys(reqHeaders).forEach(function(k) { lines.push(k + ': ' + reqHeaders[k]); });
           lines.push('', '');
@@ -261,22 +186,60 @@ function byStatus(s, tk, av) {
   return 'un';
 }
 
+// ── TEST ENDPOINT ─────────────────────────────────────────────────────────────
+app.get('/test', async function(req, res) {
+  var u = req.query.u || 'xkqz9mw2randomtest999';
+  var logs = [];
+
+  // Test Instagram via proxy - show full body snippet
+  var r = await fetchProxy('https://www.instagram.com/' + u + '/');
+  logs.push({
+    platform: 'instagram_proxy',
+    status: r.status,
+    bodyLen: r.body.length,
+    first500: r.body.substring(0, 500),
+    last200: r.body.substring(Math.max(0, r.body.length - 200))
+  });
+
+  // Test Instagram signup check via proxy
+  var r2 = await fetchProxy('https://www.instagram.com/api/v1/users/check_username/?username=' + u, {
+    headers: { 'X-CSRFToken': 'missing', 'X-IG-App-ID': '936619743392459', 'Accept': 'application/json' }
+  });
+  logs.push({ platform: 'instagram_check_api', status: r2.status, body: r2.body.substring(0, 300) });
+
+  // Test Facebook via proxy
+  var r3 = await fetchProxy('https://www.facebook.com/' + u);
+  logs.push({ platform: 'facebook_proxy', status: r3.status, bodyLen: r3.body.length, snippet: r3.body.substring(0, 300) });
+
+  // Test LinkedIn via proxy
+  var r4 = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
+  logs.push({ platform: 'linkedin_proxy', status: r4.status, bodyLen: r4.body.length, snippet: r4.body.substring(0, 300) });
+
+  res.json({ username: u, results: logs });
+});
+
+// ── CHECKERS ──────────────────────────────────────────────────────────────────
 var CHECKERS = {
   instagram: async function(u) {
-    // Try signup check endpoint first (most reliable)
+    // Use signup check API - most reliable
     var r = await fetchProxy('https://www.instagram.com/api/v1/users/check_username/?username=' + u, {
       headers: { 'X-CSRFToken': 'missing', 'X-IG-App-ID': '936619743392459', 'Accept': 'application/json' }
     });
     if (r.status === 200) {
-      try { var d = JSON.parse(r.body); if (d.available === true) return 'av'; if (d.available === false) return 'tk'; } catch(e) {}
+      try {
+        var d = JSON.parse(r.body);
+        console.log('IG check_username response:', JSON.stringify(d).substring(0, 100));
+        if (d.available === true) return 'av';
+        if (d.available === false) return 'tk';
+      } catch(e) { console.log('IG parse err:', e.message, 'body:', r.body.substring(0, 100)); }
     }
+    // Fallback: profile page
     var r2 = await fetchProxy('https://www.instagram.com/' + u + '/');
     if (r2.status === 404) return 'av';
     if (r2.status === 200) {
-      if (has(r2.body, ["Sorry, this page isn't available", 'Page Not Found', '"pageType":"ErrorPage"'])) return 'av';
-      if (has(r2.body, ['"ProfilePage"', '"profile_pic_url"', '"edge_owner_to_timeline_media"'])) return 'tk';
+      if (has(r2.body, ["Sorry, this page isn't available", '"pageType":"ErrorPage"', 'not available'])) return 'av';
+      if (has(r2.body, ['"ProfilePage"', '"profile_pic_url"', '"followed_by"'])) return 'tk';
       if (r2.body.indexOf('"' + u + '"') !== -1) return 'tk';
-      return 'un';
     }
     return 'un';
   },
@@ -286,7 +249,7 @@ var CHECKERS = {
     if (r.status === 404) return 'av';
     if (r.status === 200) {
       if (has(r.body, ['Page Not Found', 'content not found', "This page isn't available", 'not available'])) return 'av';
-      if (has(r.body, ['og:title', 'fb:app_id', 'ProfileCoverPhoto', 'timeline'])) return 'tk';
+      if (has(r.body, ['og:title', 'fb:app_id', 'timeline', 'ProfileCoverPhoto'])) return 'tk';
       return 'un';
     }
     return 'un';
@@ -300,10 +263,7 @@ var CHECKERS = {
     if (r.status === 400 || r.status === 404) return 'av';
     var r2 = await fetchProxy('https://www.tiktok.com/@' + u);
     if (r2.status === 404) return 'av';
-    if (r2.status === 200) {
-      if (has(r2.body, ["Couldn't find this account", 'user-not-found'])) return 'av';
-      return 'tk';
-    }
+    if (r2.status === 200) { if (has(r2.body, ["Couldn't find this account", 'user-not-found'])) return 'av'; return 'tk'; }
     return 'un';
   },
 
@@ -311,8 +271,9 @@ var CHECKERS = {
     var r = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
     if (r.status === 404) return 'av';
     if (r.status === 200) {
-      if (has(r.body, ['Page not found', 'profile is not available', 'no longer available'])) return 'av';
-      return 'tk';
+      if (has(r.body, ['Page not found', 'profile is not available', 'no longer available', 'This profile is not available'])) return 'av';
+      if (has(r.body, ['linkedin.com/in/' + u, '"firstName"', '"lastName"', 'profile-photo'])) return 'tk';
+      return 'un';
     }
     return 'un';
   },
@@ -321,8 +282,8 @@ var CHECKERS = {
     var r = await fetchProxy('https://www.threads.net/@' + u);
     if (r.status === 404) return 'av';
     if (r.status === 200) {
-      if (has(r.body, ['"username":"' + u + '"', '"profile_pic_url"'])) return 'tk';
-      if (has(r.body, ['not found', 'Sorry, this page', '"errorTitle"'])) return 'av';
+      if (has(r.body, ['"username":"' + u + '"', '"profile_pic_url"', '"follower_count"'])) return 'tk';
+      if (has(r.body, ['not found', 'Sorry, this page', '"errorTitle"', 'Page Not Found'])) return 'av';
       return 'un';
     }
     return 'un';
@@ -387,7 +348,6 @@ var CHECKERS = {
     return 'un';
   },
 
-  // Direct checks
   github: async function(u) { var r = await fetchDirect('https://api.github.com/users/' + u, { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'socialname-checker' } }); return byStatus(r.status, [200], [404]); },
   reddit: async function(u) { var r = await fetchDirect('https://www.reddit.com/user/' + u + '/about.json', { headers: { 'Accept': 'application/json' } }); if (r.status === 200) { if (has(r.body, ['"error": 404', '"error":404'])) return 'av'; return 'tk'; } return byStatus(r.status, [200], [404]); },
   mastodon: async function(u) { var r = await fetchDirect('https://mastodon.social/api/v1/accounts/lookup?acct=' + u, { headers: { 'Accept': 'application/json' } }); return byStatus(r.status, [200], [404, 422]); },
