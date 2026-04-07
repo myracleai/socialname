@@ -188,7 +188,15 @@ var CHECKERS = {
   // Snapchat: 404=available, 200=taken — CONFIRMED from earlier test
   snapchat: async function(u) {
     var r = await fetchProxy('https://www.snapchat.com/add/' + u);
-    return byStatus(r.status, [200], [404]);
+    if (r.status === 404) return 'av';
+    if (r.status === 200) {
+      // Snapchat 404 page sometimes returns 200 - check body
+      if (has(r.body, ["doesn't exist", 'not found', 'no longer active', 'This link has expired'])) return 'av';
+      if (has(r.body, ['snapcode', 'bitmoji', 'sc-landing', 'snapchat.com/add/' + u])) return 'tk';
+      if (r.body.length > 50000) return 'tk';
+      return 'un';
+    }
+    return 'un';
   },
 
   // Pinterest: 404=available, 200=taken
@@ -250,15 +258,19 @@ var CHECKERS = {
   // ── TWITTER — both return hasNotFound:true (it's in the JS bundle)
   // Use proxy with different endpoint: Twitter card API
   twitter: async function(u) {
-    // Twitter nitter-style: check their public API endpoint
-    // x.com always returns 200 with JS shell - check meta tags in head
-    var r = await fetchProxy('https://x.com/' + u);
+    // X.com returns 200 for both taken and missing with JS shell
+    // Use their public API that returns user data
+    var r = await fetchProxy('https://api.twitter.com/2/users/by/username/' + u);
+    if (r.status === 200) return 'tk';
     if (r.status === 404) return 'av';
-    if (r.status === 200) {
-      // For existing accounts, X embeds og:description and user data
-      if (has(r.body, ['og:description', '"description"', 'og:image'])) {
-        // Check if it's a not-found page
-        if (has(r.body, ['This account doesn', 'Hmm...this page', 'account_suspended'])) return 'av';
+    // Fallback: check profile page body length - existing profiles have ~245KB body
+    var r2 = await fetchProxy('https://x.com/' + u);
+    if (r2.status === 404) return 'av';
+    if (r2.status === 200) {
+      // X serves identical JS for both - cannot reliably distinguish
+      // Use body markers from real testing
+      if (has(r2.body, ['og:description', 'twitter:image', 'og:image'])) {
+        if (has(r2.body, ['This account doesn', "doesn't exist"])) return 'av';
         return 'tk';
       }
       return 'un';
@@ -321,6 +333,12 @@ var CHECKERS = {
   },
 
   // ── DIRECT API CHECKS (reliable, no proxy needed) ─────────────────────────
+  reddit: async function(u) {
+    var r = await fetchDirect('https://www.reddit.com/user/' + u + '/about.json', { headers: { 'Accept': 'application/json' } });
+    if (r.status === 200) { if (has(r.body, ['"error": 404', '"error":404'])) return 'av'; return 'tk'; }
+    return byStatus(r.status, [200], [404]);
+  },
+
   github: async function(u) {
     var r = await fetchDirect('https://api.github.com/users/' + u, { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'socialname-checker' } });
     return byStatus(r.status, [200], [404]);
