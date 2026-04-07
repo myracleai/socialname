@@ -221,37 +221,31 @@ app.get('/test', async function(req, res) {
 // ── CHECKERS ──────────────────────────────────────────────────────────────────
 var CHECKERS = {
   instagram: async function(u) {
-    // Use signup check API - most reliable
-    var r = await fetchProxy('https://www.instagram.com/api/v1/users/check_username/?username=' + u, {
-      headers: { 'X-CSRFToken': 'missing', 'X-IG-App-ID': '936619743392459', 'Accept': 'application/json' }
-    });
-    if (r.status === 200) {
-      try {
-        var d = JSON.parse(r.body);
-        console.log('IG check_username response:', JSON.stringify(d).substring(0, 100));
-        if (d.available === true) return 'av';
-        if (d.available === false) return 'tk';
-      } catch(e) { console.log('IG parse err:', e.message, 'body:', r.body.substring(0, 100)); }
-    }
-    // Fallback: profile page
-    var r2 = await fetchProxy('https://www.instagram.com/' + u + '/');
-    if (r2.status === 404) return 'av';
-    if (r2.status === 200) {
-      if (has(r2.body, ["Sorry, this page isn't available", '"pageType":"ErrorPage"', 'not available'])) return 'av';
-      if (has(r2.body, ['"ProfilePage"', '"profile_pic_url"', '"followed_by"'])) return 'tk';
-      if (r2.body.indexOf('"' + u + '"') !== -1) return 'tk';
-    }
+    // Key insight from real testing:
+    // - Existing user: status 200, body ~500KB (full profile page)
+    // - Missing user: status null (proxy drops connection) or status 200 with tiny body
+    // - check_username API always returns 429 (rate limited) - don't use it
+    var r = await fetchProxy('https://www.instagram.com/' + u + '/');
+    console.log('IG proxy result:', r.status, 'bodyLen:', r.body.length);
+    if (r.status === 200 && r.body.length > 50000) return 'tk';
+    if (r.status === 200 && r.body.length < 10000) return 'av';
+    if (r.status === 404) return 'av';
+    if (!r.status || r.body.length === 0) return 'av'; // proxy drops = not found
     return 'un';
   },
 
   facebook: async function(u) {
-    var r = await fetchProxy('https://www.facebook.com/' + u);
+    // Facebook proxy returns 400 always - use direct fetch with body analysis
+    var r = await fetchDirect('https://www.facebook.com/' + u);
     if (r.status === 404) return 'av';
     if (r.status === 200) {
-      if (has(r.body, ['Page Not Found', 'content not found', "This page isn't available", 'not available'])) return 'av';
+      if (has(r.body, ['Page Not Found', 'content not found', "This page isn't available"])) return 'av';
       if (has(r.body, ['og:title', 'fb:app_id', 'timeline', 'ProfileCoverPhoto'])) return 'tk';
       return 'un';
     }
+    // Try graph API (public pages only, no auth)
+    var r2 = await fetchDirect('https://www.facebook.com/pg/' + u + '/about/');
+    if (r2.status === 200 && r2.body.length > 50000) return 'tk';
     return 'un';
   },
 
@@ -268,13 +262,14 @@ var CHECKERS = {
   },
 
   linkedin: async function(u) {
-    var r = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
+    // Proxy drops connection for LinkedIn - use direct fetch
+    var r = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
     if (r.status === 404) return 'av';
     if (r.status === 200) {
-      if (has(r.body, ['Page not found', 'profile is not available', 'no longer available', 'This profile is not available'])) return 'av';
-      if (has(r.body, ['linkedin.com/in/' + u, '"firstName"', '"lastName"', 'profile-photo'])) return 'tk';
-      return 'un';
+      if (has(r.body, ['Page not found', 'profile is not available', 'no longer available'])) return 'av';
+      return 'tk';
     }
+    // LinkedIn returns 999 for bots - can't determine
     return 'un';
   },
 
