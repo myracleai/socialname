@@ -473,35 +473,35 @@ app.listen(PORT, function() {
   var u = req.query.u || 'nike';
   var logs = [];
 
-  var fb = await fetchProxy('https://www.facebook.com/' + u);
-  logs.push({ p:'facebook_proxy', status:fb.status, len:fb.body.length, snippet:fb.body.substring(0,200) });
+  // Twitter via nitter
+  var tw1 = await fetchProxy('https://nitter.poast.org/' + u);
+  logs.push({ p:'nitter', status:tw1.status, len:tw1.body.length, snippet:tw1.body.substring(0,300) });
 
-  var fb2 = await fetchDirect('https://www.facebook.com/' + u);
-  logs.push({ p:'facebook_direct', status:fb2.status, len:fb2.body.length, snippet:fb2.body.substring(0,200) });
+  // Twitter graphql
+  var tw2 = await fetchProxy('https://x.com/i/api/graphql/SAMkL5y_N9pmahSw8yy6bg/UserByScreenName?variables=%7B%22screen_name%22%3A%22' + u + '%22%7D');
+  logs.push({ p:'twitter_graphql', status:tw2.status, len:tw2.body.length, snippet:tw2.body.substring(0,200) });
 
-  var tw = await fetchProxy('https://x.com/' + u);
-  logs.push({ p:'twitter_proxy', status:tw.status, len:tw.body.length,
-    hasOgDesc: tw.body.indexOf('og:description') !== -1,
-    hasOgImage: tw.body.indexOf('og:image') !== -1,
-    snippet: tw.body.substring(0,300) });
-
-  var li = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
-  logs.push({ p:'linkedin_proxy', status:li.status, len:li.body.length, snippet:li.body.substring(0,200) });
-
-  var li2 = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
-  logs.push({ p:'linkedin_direct', status:li2.status, len:li2.body.length, snippet:li2.body.substring(0,200) });
-
+  // Patreon
   var pa = await fetchProxy('https://www.patreon.com/' + u);
-  logs.push({ p:'patreon_proxy', status:pa.status, len:pa.body.length, snippet:pa.body.substring(0,200) });
+  logs.push({ p:'patreon', status:pa.status, len:pa.body.length, snippet:pa.body.substring(0,200) });
 
-  var pa2 = await fetchDirect('https://www.patreon.com/' + u);
-  logs.push({ p:'patreon_direct', status:pa2.status, len:pa2.body.length, snippet:pa2.body.substring(0,200) });
+  // Facebook graph
+  var fb = await fetchProxy('https://graph.facebook.com/' + u + '?fields=id,name');
+  logs.push({ p:'facebook_graph', status:fb.status, len:fb.body.length, body:fb.body.substring(0,300) });
 
-  var qr = await fetchProxy('https://www.quora.com/profile/' + u);
-  logs.push({ p:'quora_proxy', status:qr.status, len:qr.body.length, snippet:qr.body.substring(0,200) });
+  // LinkedIn voyager
+  var li = await fetchProxy('https://www.linkedin.com/voyager/api/identity/profiles/' + u);
+  logs.push({ p:'linkedin_voyager', status:li.status, len:li.body.length, snippet:li.body.substring(0,200) });
 
-  var qr2 = await fetchDirect('https://www.quora.com/profile/' + u);
-  logs.push({ p:'quora_direct', status:qr2.status, len:qr2.body.length, snippet:qr2.body.substring(0,200) });
+  // Quora googlebot
+  var qr = await fetchProxy('https://www.quora.com/profile/' + u, {
+    headers: { 'User-Agent': 'Googlebot/2.1 (+http://www.google.com/bot.html)' }
+  });
+  logs.push({ p:'quora_googlebot', status:qr.status, len:qr.body.length, snippet:qr.body.substring(0,300) });
+
+  // ProductHunt
+  var ph = await fetchProxy('https://www.producthunt.com/@' + u);
+  logs.push({ p:'producthunt', status:ph.status, len:ph.body.length, snippet:ph.body.substring(0,200) });
 
   res.json({ username: u, results: logs });
 });
