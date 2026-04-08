@@ -471,73 +471,22 @@ app.listen(PORT, function() {
 });app.get('/test', async function(req, res) {
   var u = req.query.u || 'nike';
   var logs = [];
-  var net2 = require('net');
 
-  // Test 1: IPRoyal port 7777
-  var r1 = await new Promise(function(resolve) {
-    var timer = setTimeout(function() { resolve('timeout'); }, 10000);
-    var sock = net2.createConnection(7777, 'geo.iproyal.com');
-    sock.setTimeout(9000);
-    sock.on('connect', function() {
-      var auth = 'Basic ' + Buffer.from(PROXY_USER + ':' + PROXY_PASS).toString('base64');
-      sock.write('CONNECT www.linkedin.com:443 HTTP/1.1
-Host: www.linkedin.com:443
-Proxy-Authorization: ' + auth + '
+  // Test 1: LinkedIn via proxy
+  var r1 = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
+  logs.push({ p:'linkedin_proxy', status:r1.status, len:r1.body.length, snippet:r1.body.substring(0,300) });
 
-');
-      var buf = Buffer.alloc(0);
-      sock.on('data', function(c) {
-        buf = Buffer.concat([buf, c]);
-        if (buf.toString().indexOf('
+  // Test 2: LinkedIn direct
+  var r2 = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
+  logs.push({ p:'linkedin_direct', status:r2.status, len:r2.body.length, snippet:r2.body.substring(0,300) });
 
-') !== -1) {
-          clearTimeout(timer); sock.destroy();
-          resolve(buf.toString().split('
-')[0]);
-        }
-      });
-    });
-    sock.on('error', function(e) { clearTimeout(timer); resolve('error:' + e.code); });
-    sock.on('timeout', function() { clearTimeout(timer); sock.destroy(); resolve('timeout'); });
-  });
-  logs.push({ p:'port_7777', result: r1 });
+  // Test 3: LinkedIn public profile API
+  var r3 = await fetchProxy('https://www.linkedin.com/in/' + u);
+  logs.push({ p:'linkedin_no_slash', status:r3.status, len:r3.body.length, snippet:r3.body.substring(0,300) });
 
-  // Test 2: IPRoyal sticky session username_country-us
-  var r2 = await new Promise(function(resolve) {
-    var timer = setTimeout(function() { resolve('timeout'); }, 10000);
-    var sock = net2.createConnection(12321, 'geo.iproyal.com');
-    sock.setTimeout(9000);
-    sock.on('connect', function() {
-      var stickyUser = PROXY_USER + '_country-us';
-      var auth = 'Basic ' + Buffer.from(stickyUser + ':' + PROXY_PASS).toString('base64');
-      sock.write('CONNECT www.linkedin.com:443 HTTP/1.1
-Host: www.linkedin.com:443
-Proxy-Authorization: ' + auth + '
-
-');
-      var buf = Buffer.alloc(0);
-      sock.on('data', function(c) {
-        buf = Buffer.concat([buf, c]);
-        if (buf.toString().indexOf('
-
-') !== -1) {
-          clearTimeout(timer); sock.destroy();
-          resolve(buf.toString().split('
-')[0]);
-        }
-      });
-    });
-    sock.on('error', function(e) { clearTimeout(timer); resolve('error:' + e.code); });
-    sock.on('timeout', function() { clearTimeout(timer); sock.destroy(); resolve('timeout'); });
-  });
-  logs.push({ p:'sticky_us', result: r2 });
-
-  // Test 3: Direct with 429 check - different users
-  var r3 = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
-  logs.push({ p:'direct_nike', status:r3.status, len:r3.body.length });
-
-  var r4 = await fetchDirect('https://www.linkedin.com/in/xkqz9mw2test999/');
-  logs.push({ p:'direct_missing', status:r4.status, len:r4.body.length });
+  // Test 4: LinkedIn public posts
+  var r4 = await fetchProxy('https://www.linkedin.com/posts/' + u);
+  logs.push({ p:'linkedin_posts', status:r4.status, len:r4.body.length, snippet:r4.body.substring(0,200) });
 
   res.json({ username: u, results: logs });
 });
