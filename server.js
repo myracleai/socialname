@@ -471,14 +471,12 @@ app.listen(PORT, function() {
 });app.get('/test', async function(req, res) {
   var u = req.query.u || 'nike';
   var logs = [];
+  var net2 = require('net');
 
-  // Test IPRoyal alternative endpoint gate.iproyal.com:7777
-  var net = require('net');
-  var tls = require('tls');
-  
-  var altResult = await new Promise(function(resolve) {
+  // Test 1: IPRoyal port 7777
+  var r1 = await new Promise(function(resolve) {
     var timer = setTimeout(function() { resolve('timeout'); }, 10000);
-    var sock = net.createConnection(7777, 'geo.iproyal.com');
+    var sock = net2.createConnection(7777, 'geo.iproyal.com');
     sock.setTimeout(9000);
     sock.on('connect', function() {
       var auth = 'Basic ' + Buffer.from(PROXY_USER + ':' + PROXY_PASS).toString('base64');
@@ -493,26 +491,24 @@ Proxy-Authorization: ' + auth + '
         if (buf.toString().indexOf('
 
 ') !== -1) {
-          var line = buf.toString().split('
-')[0];
-          clearTimeout(timer);
-          sock.destroy();
-          resolve('connect_response: ' + line);
+          clearTimeout(timer); sock.destroy();
+          resolve(buf.toString().split('
+')[0]);
         }
       });
     });
-    sock.on('error', function(e) { clearTimeout(timer); resolve('error: ' + e.message); });
+    sock.on('error', function(e) { clearTimeout(timer); resolve('error:' + e.code); });
     sock.on('timeout', function() { clearTimeout(timer); sock.destroy(); resolve('timeout'); });
   });
-  logs.push({ p: 'iproyal_port_7777', result: altResult });
+  logs.push({ p:'port_7777', result: r1 });
 
-  // Test with sticky session format: username_country-us
-  var altResult2 = await new Promise(function(resolve) {
+  // Test 2: IPRoyal sticky session username_country-us
+  var r2 = await new Promise(function(resolve) {
     var timer = setTimeout(function() { resolve('timeout'); }, 10000);
-    var sock = net.createConnection(12321, 'geo.iproyal.com');
+    var sock = net2.createConnection(12321, 'geo.iproyal.com');
     sock.setTimeout(9000);
-    var stickyUser = PROXY_USER + '_country-us';
     sock.on('connect', function() {
+      var stickyUser = PROXY_USER + '_country-us';
       var auth = 'Basic ' + Buffer.from(stickyUser + ':' + PROXY_PASS).toString('base64');
       sock.write('CONNECT www.linkedin.com:443 HTTP/1.1
 Host: www.linkedin.com:443
@@ -525,22 +521,23 @@ Proxy-Authorization: ' + auth + '
         if (buf.toString().indexOf('
 
 ') !== -1) {
-          var line = buf.toString().split('
-')[0];
-          clearTimeout(timer);
-          sock.destroy();
-          resolve('connect_response: ' + line);
+          clearTimeout(timer); sock.destroy();
+          resolve(buf.toString().split('
+')[0]);
         }
       });
     });
-    sock.on('error', function(e) { clearTimeout(timer); resolve('error: ' + e.message); });
+    sock.on('error', function(e) { clearTimeout(timer); resolve('error:' + e.code); });
     sock.on('timeout', function() { clearTimeout(timer); sock.destroy(); resolve('timeout'); });
   });
-  logs.push({ p: 'iproyal_sticky_us', result: altResult2 });
+  logs.push({ p:'sticky_us', result: r2 });
 
-  // Test LinkedIn via proxy normally to confirm current behavior
-  var r = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
-  logs.push({ p: 'linkedin_current', status: r.status, len: r.body.length });
+  // Test 3: Direct with 429 check - different users
+  var r3 = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
+  logs.push({ p:'direct_nike', status:r3.status, len:r3.body.length });
+
+  var r4 = await fetchDirect('https://www.linkedin.com/in/xkqz9mw2test999/');
+  logs.push({ p:'direct_missing', status:r4.status, len:r4.body.length });
 
   res.json({ username: u, results: logs });
 });
