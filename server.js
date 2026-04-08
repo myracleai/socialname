@@ -482,27 +482,13 @@ app.listen(PORT, function() {
   var u = req.query.u || 'nike';
   var logs = [];
 
-  // Test 1: x.com profile - check exact body difference between taken/missing
-  var r1 = await fetchProxy('https://x.com/' + u);
-  logs.push({ p:'x.com', status:r1.status, len:r1.body.length,
-    // Search for key markers
-    hasOgTitle: r1.body.indexOf('og:title') !== -1,
-    hasOgDesc: r1.body.indexOf('og:description') !== -1,
-    hasTwImg: r1.body.indexOf('twitter:image') !== -1,
-    hasTwDesc: r1.body.indexOf('twitter:description') !== -1,
-    hasNotFound: r1.body.indexOf('not_found') !== -1,
-    hasDoesntExist: r1.body.indexOf("doesn't exist") !== -1,
-    // Show the <head> section which has meta tags
-    head: r1.body.substring(r1.body.indexOf('<head'), r1.body.indexOf('</head>') + 7).substring(0, 1000)
-  });
+  // Test publish.twitter.com via proxy
+  var r1 = await fetchProxy('https://publish.twitter.com/oembed?url=https://twitter.com/' + u);
+  logs.push({ p:'oembed_proxy', status:r1.status, len:r1.body.length, body:r1.body.substring(0,200) });
 
-  // Test 2: Twitter's public oembed endpoint
-  var r2 = await fetchProxy('https://publish.twitter.com/oembed?url=https://twitter.com/' + u);
-  logs.push({ p:'twitter_oembed', status:r2.status, body:r2.body.substring(0,300) });
-
-  // Test 3: Twitter intent page - different endpoint
-  var r3 = await fetchProxy('https://twitter.com/intent/user?screen_name=' + u);
-  logs.push({ p:'twitter_intent', status:r3.status, len:r3.body.length, snippet:r3.body.substring(0,400) });
+  // Test publish.twitter.com direct
+  var r2 = await fetchDirect('https://publish.twitter.com/oembed?url=https://twitter.com/' + u);
+  logs.push({ p:'oembed_direct', status:r2.status, len:r2.body.length, body:r2.body.substring(0,200) });
 
   res.json({ username: u, results: logs });
 });
