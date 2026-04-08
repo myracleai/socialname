@@ -167,8 +167,11 @@ var CHECKERS = {
 
   // ProductHunt: 404=available, 200=taken — CONFIRMED
   producthunt: async function(u) {
+    // CONFIRMED: 200=taken, 404=missing
     var r = await fetchProxy('https://www.producthunt.com/@' + u);
-    return byStatus(r.status, [200], [404]);
+    if (r.status === 200) return 'tk';
+    if (r.status === 404) return 'av';
+    return 'un';
   },
 
   // Tumblr: 404=available — CONFIRMED
@@ -239,18 +242,25 @@ var CHECKERS = {
 
   // ── FACEBOOK — proxy returns 400 always, direct works partially ────────────
   facebook: async function(u) {
-    // Facebook returns 400 for all requests from servers (both taken and missing)
-    // Use Facebook's public search API which is more permissive
-    var r = await fetchProxy('https://www.facebook.com/search/top?q=' + encodeURIComponent(u));
-    if (r.status === 200 && r.body.length > 50000) {
-      if (has(r.body, ['"profile_url":"https://www.facebook.com/' + u + '"', '"vanity":"' + u + '"'])) return 'tk';
+    // CONFIRMED from testing:
+    // - Existing username (nike): graph API returns 403 with OAuth error body
+    // - Missing username: graph API returns null (connection dropped/timeout)
+    // This difference is reliable enough to use
+    var r = await fetchProxy('https://graph.facebook.com/' + u + '?fields=id,name');
+    if (r.status === 403) {
+      // 403 = Facebook recognized the username and returned an auth error
+      // This means the page/profile EXISTS
+      return 'tk';
     }
-    // Try graph API without token (works for public pages)
-    var r2 = await fetchProxy('https://graph.facebook.com/' + u + '?fields=id,name');
-    if (r2.status === 200) {
-      try { var d = JSON.parse(r2.body); if (d.id) return 'tk'; } catch(e) {}
+    if (r.status === 404) return 'av';
+    if (r.status === 200) {
+      try { var d = JSON.parse(r.body); if (d.id) return 'tk'; } catch(e) {}
+      return 'tk';
     }
-    if (r2.status === 404) return 'av';
+    if (!r.status) {
+      // null = connection dropped = page does not exist
+      return 'av';
+    }
     return 'un';
   },
 
@@ -411,15 +421,14 @@ var CHECKERS = {
     return 'un';
   },
   patreon: async function(u) {
-    // CONFIRMED: 302 redirect to /profile/creators = taken, 404 = available
+    // CONFIRMED: proxy returns 302 for taken, 404 for missing
     var r = await fetchProxy('https://www.patreon.com/' + u);
     if (r.status === 302 || r.status === 301) return 'tk';
     if (r.status === 404) return 'av';
-    if (r.status === 200) { if (has(r.body, ['page not found', "doesn't exist"])) return 'av'; return 'tk'; }
-    // Fallback direct
-    var r2 = await fetchDirect('https://www.patreon.com/' + u);
-    if (r2.status === 302 || r2.status === 301) return 'tk';
-    if (r2.status === 404) return 'av';
+    if (r.status === 200) {
+      if (has(r.body, ['page not found', "doesn't exist"])) return 'av';
+      return 'tk';
+    }
     return 'un';
   },
   goodreads: async function(u) {
