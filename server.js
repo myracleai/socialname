@@ -482,35 +482,27 @@ app.listen(PORT, function() {
   var u = req.query.u || 'nike';
   var logs = [];
 
-  // Twitter via nitter
-  var tw1 = await fetchProxy('https://nitter.poast.org/' + u);
-  logs.push({ p:'nitter', status:tw1.status, len:tw1.body.length, snippet:tw1.body.substring(0,300) });
-
-  // Twitter graphql
-  var tw2 = await fetchProxy('https://x.com/i/api/graphql/SAMkL5y_N9pmahSw8yy6bg/UserByScreenName?variables=%7B%22screen_name%22%3A%22' + u + '%22%7D');
-  logs.push({ p:'twitter_graphql', status:tw2.status, len:tw2.body.length, snippet:tw2.body.substring(0,200) });
-
-  // Patreon
-  var pa = await fetchProxy('https://www.patreon.com/' + u);
-  logs.push({ p:'patreon', status:pa.status, len:pa.body.length, snippet:pa.body.substring(0,200) });
-
-  // Facebook graph
-  var fb = await fetchProxy('https://graph.facebook.com/' + u + '?fields=id,name');
-  logs.push({ p:'facebook_graph', status:fb.status, len:fb.body.length, body:fb.body.substring(0,300) });
-
-  // LinkedIn voyager
-  var li = await fetchProxy('https://www.linkedin.com/voyager/api/identity/profiles/' + u);
-  logs.push({ p:'linkedin_voyager', status:li.status, len:li.body.length, snippet:li.body.substring(0,200) });
-
-  // Quora googlebot
-  var qr = await fetchProxy('https://www.quora.com/profile/' + u, {
-    headers: { 'User-Agent': 'Googlebot/2.1 (+http://www.google.com/bot.html)' }
+  // Test 1: x.com profile - check exact body difference between taken/missing
+  var r1 = await fetchProxy('https://x.com/' + u);
+  logs.push({ p:'x.com', status:r1.status, len:r1.body.length,
+    // Search for key markers
+    hasOgTitle: r1.body.indexOf('og:title') !== -1,
+    hasOgDesc: r1.body.indexOf('og:description') !== -1,
+    hasTwImg: r1.body.indexOf('twitter:image') !== -1,
+    hasTwDesc: r1.body.indexOf('twitter:description') !== -1,
+    hasNotFound: r1.body.indexOf('not_found') !== -1,
+    hasDoesntExist: r1.body.indexOf("doesn't exist") !== -1,
+    // Show the <head> section which has meta tags
+    head: r1.body.substring(r1.body.indexOf('<head'), r1.body.indexOf('</head>') + 7).substring(0, 1000)
   });
-  logs.push({ p:'quora_googlebot', status:qr.status, len:qr.body.length, snippet:qr.body.substring(0,300) });
 
-  // ProductHunt
-  var ph = await fetchProxy('https://www.producthunt.com/@' + u);
-  logs.push({ p:'producthunt', status:ph.status, len:ph.body.length, snippet:ph.body.substring(0,200) });
+  // Test 2: Twitter's public oembed endpoint
+  var r2 = await fetchProxy('https://publish.twitter.com/oembed?url=https://twitter.com/' + u);
+  logs.push({ p:'twitter_oembed', status:r2.status, body:r2.body.substring(0,300) });
+
+  // Test 3: Twitter intent page - different endpoint
+  var r3 = await fetchProxy('https://twitter.com/intent/user?screen_name=' + u);
+  logs.push({ p:'twitter_intent', status:r3.status, len:r3.body.length, snippet:r3.body.substring(0,400) });
 
   res.json({ username: u, results: logs });
 });
