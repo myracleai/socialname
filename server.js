@@ -239,41 +239,37 @@ var CHECKERS = {
 
   // ── FACEBOOK — proxy returns 400 always, direct works partially ────────────
   facebook: async function(u) {
-    // Try via proxy first
-    var r = await fetchProxy('https://www.facebook.com/' + u);
-    if (r.status === 200 && r.body.length > 10000) {
-      if (has(r.body, ['Page Not Found', 'content not found', "This page isn't available", 'not available'])) return 'av';
-      if (has(r.body, ['og:title', 'fb:app_id', 'ProfileCoverPhoto', 'timeline', 'userVanity'])) return 'tk';
+    // Facebook returns 400 for all requests from servers (both taken and missing)
+    // Use Facebook's public search API which is more permissive
+    var r = await fetchProxy('https://www.facebook.com/search/top?q=' + encodeURIComponent(u));
+    if (r.status === 200 && r.body.length > 50000) {
+      if (has(r.body, ['"profile_url":"https://www.facebook.com/' + u + '"', '"vanity":"' + u + '"'])) return 'tk';
     }
-    // Fallback direct
-    var r2 = await fetchDirect('https://www.facebook.com/' + u);
-    if (r2.status === 404) return 'av';
+    // Try graph API without token (works for public pages)
+    var r2 = await fetchProxy('https://graph.facebook.com/' + u + '?fields=id,name');
     if (r2.status === 200) {
-      if (has(r2.body, ['Page Not Found', 'content not found', "This page isn't available"])) return 'av';
-      if (has(r2.body, ['og:title', 'fb:app_id', 'ProfileCoverPhoto', 'timeline'])) return 'tk';
+      try { var d = JSON.parse(r2.body); if (d.id) return 'tk'; } catch(e) {}
     }
+    if (r2.status === 404) return 'av';
     return 'un';
   },
 
   // ── TWITTER — both return hasNotFound:true (it's in the JS bundle)
   // Use proxy with different endpoint: Twitter card API
   twitter: async function(u) {
-    // X.com returns 200 for both taken and missing with JS shell
-    // Use their public API that returns user data
-    var r = await fetchProxy('https://api.twitter.com/2/users/by/username/' + u);
-    if (r.status === 200) return 'tk';
+    // X serves same JS shell for both taken and missing
+    // Use Nitter instance as proxy-friendly alternative
+    var r = await fetchProxy('https://nitter.poast.org/' + u);
+    if (r.status === 200) {
+      if (has(r.body, ['User not found', 'user not found', 'No results', 'could not be found'])) return 'av';
+      if (has(r.body, ['timeline', 'tweet', '@' + u])) return 'tk';
+    }
     if (r.status === 404) return 'av';
-    // Fallback: check profile page body length - existing profiles have ~245KB body
-    var r2 = await fetchProxy('https://x.com/' + u);
-    if (r2.status === 404) return 'av';
+    // Fallback: try Twitter's own endpoint that returns user data without auth
+    var r2 = await fetchProxy('https://x.com/i/api/graphql/SAMkL5y_N9pmahSw8yy6bg/UserByScreenName?variables=%7B%22screen_name%22%3A%22' + u + '%22%7D');
     if (r2.status === 200) {
-      // X serves identical JS for both - cannot reliably distinguish
-      // Use body markers from real testing
-      if (has(r2.body, ['og:description', 'twitter:image', 'og:image'])) {
-        if (has(r2.body, ['This account doesn', "doesn't exist"])) return 'av';
-        return 'tk';
-      }
-      return 'un';
+      if (has(r2.body, ['"rest_id"', '"name"'])) return 'tk';
+      if (has(r2.body, ['"User_unavailable"', 'user not found'])) return 'av';
     }
     return 'un';
   },
@@ -294,40 +290,44 @@ var CHECKERS = {
 
   // ── LINKEDIN — proxy drops, direct returns 999, cannot check reliably ──────
   linkedin: async function(u) {
-    // Try proxy (bypasses 999 bot detection)
-    var r = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
+    // LinkedIn returns 999 for bots and null for proxy - try their public API
+    var r = await fetchProxy('https://www.linkedin.com/voyager/api/identity/profiles/' + u);
+    if (r.status === 200) return 'tk';
     if (r.status === 404) return 'av';
-    if (r.status === 200) {
-      if (has(r.body, ['Page not found', 'profile is not available', 'no longer available', 'This profile is not available'])) return 'av';
-      if (has(r.body, ['og:title', 'profile-photo', 'linkedin.com/in/' + u])) return 'tk';
-      if (r.body.length > 50000) return 'tk';
-    }
-    // Fallback: direct
-    var r2 = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
+    // Try public profile URL with different user agent
+    var r2 = await fetchProxy('https://www.linkedin.com/in/' + u + '/', {
+      headers: {
+        'User-Agent': 'LinkedInBot/1.0 (compatible; Mozilla/5.0; Apache-HttpClient/4.5.4 +http://www.linkedin.com)',
+        'Accept': 'text/html'
+      }
+    });
     if (r2.status === 404) return 'av';
     if (r2.status === 200) {
       if (has(r2.body, ['Page not found', 'profile is not available'])) return 'av';
-      return 'tk';
+      if (r2.body.length > 50000) return 'tk';
     }
     return 'un';
   },
 
   // ── QUORA — Cloudflare blocks proxy (403), direct also blocked ─────────────
   quora: async function(u) {
-    // Try via proxy to bypass Cloudflare
-    var r = await fetchProxy('https://www.quora.com/profile/' + u);
-    if (r.status === 404) return 'av';
+    // Quora uses Cloudflare which returns 403 for all server requests
+    // Try their mobile API which is less protected
+    var r = await fetchProxy('https://www.quora.com/_/api/mobile_api_gateway?queries=[{"query":"UserFollowerCount","variables":{"uid":"' + u + '"}}]', {
+      headers: { 'Accept': 'application/json', 'quora-page-creation-time': '0' }
+    });
     if (r.status === 200) {
-      if (has(r.body, ['Page Not Found', "doesn't exist", 'not found'])) return 'av';
-      if (r.body.length > 50000) return 'tk';
-      return 'un';
+      if (has(r.body, ['"error"', 'not found'])) return 'av';
+      return 'tk';
     }
-    // Fallback direct
-    var r2 = await fetchDirect('https://www.quora.com/profile/' + u);
+    // Fallback: try quora profile with googlebot UA
+    var r2 = await fetchProxy('https://www.quora.com/profile/' + u, {
+      headers: { 'User-Agent': 'Googlebot/2.1 (+http://www.google.com/bot.html)' }
+    });
     if (r2.status === 404) return 'av';
     if (r2.status === 200) {
-      if (has(r2.body, ['Page Not Found', "doesn't exist"])) return 'av';
-      return 'tk';
+      if (has(r2.body, ['Page Not Found', "doesn't exist", 'not found'])) return 'av';
+      if (r2.body.length > 50000) return 'tk';
     }
     return 'un';
   },
@@ -411,9 +411,15 @@ var CHECKERS = {
     return 'un';
   },
   patreon: async function(u) {
-    var r = await fetchDirect('https://www.patreon.com/' + u);
+    // CONFIRMED: 302 redirect to /profile/creators = taken, 404 = available
+    var r = await fetchProxy('https://www.patreon.com/' + u);
+    if (r.status === 302 || r.status === 301) return 'tk';
     if (r.status === 404) return 'av';
-    if (r.status === 200) { if (has(r.body, ['page not found'])) return 'av'; return 'tk'; }
+    if (r.status === 200) { if (has(r.body, ['page not found', "doesn't exist"])) return 'av'; return 'tk'; }
+    // Fallback direct
+    var r2 = await fetchDirect('https://www.patreon.com/' + u);
+    if (r2.status === 302 || r2.status === 301) return 'tk';
+    if (r2.status === 404) return 'av';
     return 'un';
   },
   goodreads: async function(u) {
