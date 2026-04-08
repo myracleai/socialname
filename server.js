@@ -267,20 +267,10 @@ var CHECKERS = {
   // ── TWITTER — both return hasNotFound:true (it's in the JS bundle)
   // Use proxy with different endpoint: Twitter card API
   twitter: async function(u) {
-    // X serves same JS shell for both taken and missing
-    // Use Nitter instance as proxy-friendly alternative
-    var r = await fetchProxy('https://nitter.poast.org/' + u);
-    if (r.status === 200) {
-      if (has(r.body, ['User not found', 'user not found', 'No results', 'could not be found'])) return 'av';
-      if (has(r.body, ['timeline', 'tweet', '@' + u])) return 'tk';
-    }
+    // CONFIRMED: publish.twitter.com/oembed returns 200 for existing, 404 for missing
+    var r = await fetchDirect('https://publish.twitter.com/oembed?url=https://twitter.com/' + u);
+    if (r.status === 200) return 'tk';
     if (r.status === 404) return 'av';
-    // Fallback: try Twitter's own endpoint that returns user data without auth
-    var r2 = await fetchProxy('https://x.com/i/api/graphql/SAMkL5y_N9pmahSw8yy6bg/UserByScreenName?variables=%7B%22screen_name%22%3A%22' + u + '%22%7D');
-    if (r2.status === 200) {
-      if (has(r2.body, ['"rest_id"', '"name"'])) return 'tk';
-      if (has(r2.body, ['"User_unavailable"', 'user not found'])) return 'av';
-    }
     return 'un';
   },
 
