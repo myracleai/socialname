@@ -469,26 +469,7 @@ app.get('/health', function(req, res) {
 app.listen(PORT, function() {
   console.log('Checker API on port', PORT);
 });app.get('/test', async function(req, res) {
-  var u = req.query.u || 'nike';
-  var logs = [];
-
-  // Test 1: LinkedIn via proxy
-  var r1 = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
-  logs.push({ p:'linkedin_proxy', status:r1.status, len:r1.body.length, snippet:r1.body.substring(0,300) });
-
-  // Test 2: LinkedIn direct
-  var r2 = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
-  logs.push({ p:'linkedin_direct', status:r2.status, len:r2.body.length, snippet:r2.body.substring(0,300) });
-
-  // Test 3: LinkedIn public profile API
-  var r3 = await fetchProxy('https://www.linkedin.com/in/' + u);
-  logs.push({ p:'linkedin_no_slash', status:r3.status, len:r3.body.length, snippet:r3.body.substring(0,300) });
-
-  // Test 4: LinkedIn public posts
-  var r4 = await fetchProxy('https://www.linkedin.com/posts/' + u);
-  logs.push({ p:'linkedin_posts', status:r4.status, len:r4.body.length, snippet:r4.body.substring(0,200) });
-
-  res.json({ username: u, results: logs });
+  res.json({ status: 'ok' });
 });
 
 
