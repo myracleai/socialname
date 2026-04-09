@@ -403,8 +403,10 @@ var CHECKERS = {
     return 'un';
   },
   patreon: async function(u) {
-    // CONFIRMED: proxy returns 302 for taken, 404 for missing
-    var r = await fetchProxy('https://www.patreon.com/' + u);
+    // CONFIRMED: 302=taken (redirects to /profile/creators), 404=available
+    // Use noRedirect so we catch the 302 before it gets followed
+    var r = await fetchProxy('https://www.patreon.com/' + u, { noRedirect: true });
+    console.log('patreon status:', r.status, 'len:', r.body.length);
     if (r.status === 302 || r.status === 301) return 'tk';
     if (r.status === 404) return 'av';
     if (r.status === 200) {
