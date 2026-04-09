@@ -466,11 +466,13 @@ app.listen(PORT, function() {
   var u = req.query.u || 'nike';
   var logs = [];
 
-  var r1 = await fetchProxy('https://www.patreon.com/' + u);
-  logs.push({ p: 'patreon_proxy', status: r1.status, len: r1.body.length, snippet: r1.body.substring(0, 200) });
+  // Test with noRedirect to catch 302
+  var r1 = await fetchProxy('https://www.patreon.com/' + u, { noRedirect: true });
+  logs.push({ p: 'noredirect', status: r1.status, len: r1.body.length, snippet: r1.body.substring(0, 150) });
 
-  var r2 = await fetchDirect('https://www.patreon.com/' + u);
-  logs.push({ p: 'patreon_direct', status: r2.status, len: r2.body.length, snippet: r2.body.substring(0, 200) });
+  // Test without noRedirect to see where it ends up
+  var r2 = await fetchProxy('https://www.patreon.com/' + u);
+  logs.push({ p: 'with_redirect', status: r2.status, len: r2.body.length, snippet: r2.body.substring(0, 150) });
 
   res.json({ username: u, results: logs });
 });
