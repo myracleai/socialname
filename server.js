@@ -461,7 +461,22 @@ app.get('/health', function(req, res) {
 app.listen(PORT, function() {
   console.log('Checker API on port', PORT);
 });app.get('/test', async function(req, res) {
-  res.json({ status: 'ok' });
+  var u = req.query.u || 'nike';
+  var logs = [];
+
+  // Test LinkedIn via proxy
+  var r1 = await fetchProxy('https://www.linkedin.com/in/' + u + '/');
+  logs.push({ p: 'proxy', status: r1.status, len: r1.body.length, snippet: r1.body.substring(0, 200) });
+
+  // Test LinkedIn direct
+  var r2 = await fetchDirect('https://www.linkedin.com/in/' + u + '/');
+  logs.push({ p: 'direct', status: r2.status, len: r2.body.length, snippet: r2.body.substring(0, 200) });
+
+  // Test LinkedIn via proxy with different URL
+  var r3 = await fetchProxy('https://www.linkedin.com/pub/dir/' + u + '/');
+  logs.push({ p: 'pub_dir', status: r3.status, len: r3.body.length });
+
+  res.json({ username: u, results: logs });
 });
 
 
