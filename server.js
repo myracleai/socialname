@@ -242,25 +242,17 @@ var CHECKERS = {
 
   // ── FACEBOOK — proxy returns 400 always, direct works partially ────────────
   facebook: async function(u) {
-    // CONFIRMED from testing:
-    // - Existing username (nike): graph API returns 403 with OAuth error body
-    // - Missing username: graph API returns null (connection dropped/timeout)
-    // This difference is reliable enough to use
+    // CONFIRMED: existing=403, missing=null or other non-403 status
     var r = await fetchProxy('https://graph.facebook.com/' + u + '?fields=id,name');
-    if (r.status === 403) {
-      // 403 = Facebook recognized the username and returned an auth error
-      // This means the page/profile EXISTS
-      return 'tk';
-    }
-    if (r.status === 404) return 'av';
+    console.log('facebook graph status:', r.status, 'len:', r.body.length);
     if (r.status === 200) {
       try { var d = JSON.parse(r.body); if (d.id) return 'tk'; } catch(e) {}
-      return 'tk';
     }
-    if (!r.status) {
-      // null = connection dropped = page does not exist
-      return 'av';
-    }
+    if (r.status === 403) return 'tk';
+    if (r.status === 404) return 'av';
+    if (!r.status || r.body.length === 0) return 'av';
+    // Any other status - try body content
+    if (r.body.indexOf('"error"') !== -1) return 'av';
     return 'un';
   },
 
