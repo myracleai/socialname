@@ -403,9 +403,11 @@ var CHECKERS = {
     return 'un';
   },
   patreon: async function(u) {
-    // CONFIRMED: 307=taken (redirects to /profile), 404=available
+    // CONFIRMED: 302=taken (redirects to /profile/creators), 404=available
+    // Use noRedirect so we catch the 302 before it gets followed
     var r = await fetchProxy('https://www.patreon.com/' + u, { noRedirect: true });
-    if (r.status === 307 || r.status === 302 || r.status === 301) return 'tk';
+    console.log('patreon status:', r.status, 'len:', r.body.length);
+    if (r.status === 302 || r.status === 301) return 'tk';
     if (r.status === 404) return 'av';
     if (r.status === 200) {
       if (has(r.body, ['page not found', "doesn't exist"])) return 'av';
