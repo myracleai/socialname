@@ -461,6 +461,22 @@ app.get('/health', function(req, res) {
 app.listen(PORT, function() {
   console.log('Checker API on port', PORT);
 });app.get('/test', async function(req, res) {
-  res.json({ status: 'ok', proxy: PROXY_HOST + ':' + PROXY_PORT });
+  var u = req.query.u || 'nike';
+  var logs = [];
+
+  var r = await fetchProxy('https://www.threads.net/@' + u);
+  logs.push({
+    p: 'threads',
+    status: r.status,
+    len: r.body.length,
+    hasNotFound: r.body.indexOf('not found') !== -1,
+    hasErrorTitle: r.body.indexOf('errorTitle') !== -1,
+    hasPageNotFound: r.body.indexOf('Page Not Found') !== -1,
+    hasErrorCode: r.body.indexOf('"errorCode"') !== -1,
+    snippet: r.body.substring(0, 200)
+  });
+
+  res.json({ username: u, results: logs });
 });
+
 
