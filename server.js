@@ -403,11 +403,9 @@ var CHECKERS = {
     return 'un';
   },
   patreon: async function(u) {
-    // CONFIRMED: 302=taken (redirects to /profile/creators), 404=available
-    // Use noRedirect so we catch the 302 before it gets followed
+    // CONFIRMED: 307=taken (redirects to /profile), 404=available
     var r = await fetchProxy('https://www.patreon.com/' + u, { noRedirect: true });
-    console.log('patreon status:', r.status, 'len:', r.body.length);
-    if (r.status === 302 || r.status === 301) return 'tk';
+    if (r.status === 307 || r.status === 302 || r.status === 301) return 'tk';
     if (r.status === 404) return 'av';
     if (r.status === 200) {
       if (has(r.body, ['page not found', "doesn't exist"])) return 'av';
@@ -463,18 +461,6 @@ app.get('/health', function(req, res) {
 app.listen(PORT, function() {
   console.log('Checker API on port', PORT);
 });app.get('/test', async function(req, res) {
-  var u = req.query.u || 'nike';
-  var logs = [];
-
-  // Test with noRedirect to catch 302
-  var r1 = await fetchProxy('https://www.patreon.com/' + u, { noRedirect: true });
-  logs.push({ p: 'noredirect', status: r1.status, len: r1.body.length, snippet: r1.body.substring(0, 150) });
-
-  // Test without noRedirect to see where it ends up
-  var r2 = await fetchProxy('https://www.patreon.com/' + u);
-  logs.push({ p: 'with_redirect', status: r2.status, len: r2.body.length, snippet: r2.body.substring(0, 150) });
-
-  res.json({ username: u, results: logs });
+  res.json({ status: 'ok', proxy: PROXY_HOST + ':' + PROXY_PORT });
 });
-
 
