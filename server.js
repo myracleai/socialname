@@ -153,17 +153,8 @@ var CHECKERS = {
 
   // Threads: both 200, but missing has error text in body — CONFIRMED
   threads: async function(u) {
-    var r = await fetchProxy('https://www.threads.net/@' + u);
-    if (r.status === 404) return 'av';
-    if (r.status === 200) {
-      // CONFIRMED from testing:
-      // taken (nike): 268673 bytes
-      // missing (random): 263385 bytes
-      // Difference is ~5KB - taken profiles have more data embedded
-      if (r.body.length > 266000) return 'tk';
-      if (r.body.length < 265000) return 'av';
-      return 'un';
-    }
+    // Threads serves identical JS shell for both existing and missing users
+    // Cannot be distinguished server-side - handled as Visit link on frontend
     return 'un';
   },
 
@@ -463,26 +454,6 @@ app.get('/health', function(req, res) {
 app.listen(PORT, function() {
   console.log('Checker API on port', PORT);
 });app.get('/test', async function(req, res) {
-  var u = req.query.u || 'nike';
-  var logs = [];
-  var r = await fetchProxy('https://www.threads.net/@' + u);
-  var b = r.body;
-  logs.push({
-    status: r.status,
-    len: b.length,
-    hasUserID: b.indexOf('"user_id"') !== -1,
-    hasFollowerCount: b.indexOf('follower_count') !== -1,
-    hasProfilePic: b.indexOf('profile_pic_url') !== -1,
-    hasBiography: b.indexOf('"biography"') !== -1,
-    hasIsVerified: b.indexOf('"is_verified"') !== -1,
-    hasUserNotFound: b.indexOf('UserNotFound') !== -1,
-    hasNotFoundPage: b.indexOf('NotFoundPage') !== -1,
-    hasSorry: b.indexOf('Sorry') !== -1,
-    hasThreadsUser: b.indexOf('ThreadsUser') !== -1,
-    hasGraphQL: b.indexOf('__typename') !== -1,
-    snippet200: b.substring(200000, 200300)
-  });
-  res.json({ username: u, results: logs });
+  res.json({ status: 'ok' });
 });
-
 
