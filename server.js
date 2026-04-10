@@ -463,6 +463,11 @@ app.get('/health', function(req, res) {
 app.listen(PORT, function() {
   console.log('Checker API on port', PORT);
 });app.get('/test', async function(req, res) {
-  res.json({ status: 'ok' });
+  var u = req.query.u || 'nike';
+  var logs = [];
+  var r = await fetchProxy('https://www.threads.net/@' + u);
+  logs.push({ status: r.status, len: r.body.length });
+  res.json({ username: u, results: logs });
 });
+
 
