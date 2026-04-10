@@ -466,7 +466,22 @@ app.listen(PORT, function() {
   var u = req.query.u || 'nike';
   var logs = [];
   var r = await fetchProxy('https://www.threads.net/@' + u);
-  logs.push({ status: r.status, len: r.body.length });
+  var b = r.body;
+  logs.push({
+    status: r.status,
+    len: b.length,
+    hasUserID: b.indexOf('"user_id"') !== -1,
+    hasFollowerCount: b.indexOf('follower_count') !== -1,
+    hasProfilePic: b.indexOf('profile_pic_url') !== -1,
+    hasBiography: b.indexOf('"biography"') !== -1,
+    hasIsVerified: b.indexOf('"is_verified"') !== -1,
+    hasUserNotFound: b.indexOf('UserNotFound') !== -1,
+    hasNotFoundPage: b.indexOf('NotFoundPage') !== -1,
+    hasSorry: b.indexOf('Sorry') !== -1,
+    hasThreadsUser: b.indexOf('ThreadsUser') !== -1,
+    hasGraphQL: b.indexOf('__typename') !== -1,
+    snippet200: b.substring(200000, 200300)
+  });
   res.json({ username: u, results: logs });
 });
 
