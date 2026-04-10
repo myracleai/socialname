@@ -156,10 +156,12 @@ var CHECKERS = {
     var r = await fetchProxy('https://www.threads.net/@' + u);
     if (r.status === 404) return 'av';
     if (r.status === 200) {
-      // Missing: hasError=true (contains 'not found' or 'errorTitle')
-      // Taken: hasError=false, larger body
-      if (has(r.body, ['not found', 'errorTitle', 'Page Not Found', '"errorCode"'])) return 'av';
-      if (r.body.length > 200000) return 'tk'; // Real profiles have large bodies
+      // CONFIRMED from testing:
+      // taken (nike): 268673 bytes
+      // missing (random): 263385 bytes
+      // Difference is ~5KB - taken profiles have more data embedded
+      if (r.body.length > 266000) return 'tk';
+      if (r.body.length < 265000) return 'av';
       return 'un';
     }
     return 'un';
@@ -461,22 +463,6 @@ app.get('/health', function(req, res) {
 app.listen(PORT, function() {
   console.log('Checker API on port', PORT);
 });app.get('/test', async function(req, res) {
-  var u = req.query.u || 'nike';
-  var logs = [];
-
-  var r = await fetchProxy('https://www.threads.net/@' + u);
-  logs.push({
-    p: 'threads',
-    status: r.status,
-    len: r.body.length,
-    hasNotFound: r.body.indexOf('not found') !== -1,
-    hasErrorTitle: r.body.indexOf('errorTitle') !== -1,
-    hasPageNotFound: r.body.indexOf('Page Not Found') !== -1,
-    hasErrorCode: r.body.indexOf('"errorCode"') !== -1,
-    snippet: r.body.substring(0, 200)
-  });
-
-  res.json({ username: u, results: logs });
+  res.json({ status: 'ok' });
 });
-
 
